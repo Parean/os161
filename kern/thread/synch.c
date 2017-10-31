@@ -318,3 +318,144 @@ cv_broadcast(struct cv *cv, struct lock *lock)
 	wchan_wakeall(cv->cv_wchan, &cv->cv_spinlock);
 	spinlock_release(&cv->cv_spinlock);
 }
+
+struct rwlock *
+rwlock_create(const char *name)
+{
+	struct rwlock *rwlock;
+
+	rwlock = kmalloc(sizeof(*rwlock));
+	if (rwlock == NULL) {
+		return NULL;
+	}
+
+	rwlock->rwlock_name = kstrdup(name);
+	if (rwlock->rwlock_name==NULL) {
+		kfree(rwlock);
+		return NULL;
+	}
+
+	rwlock->rwlock_rwchan = wchan_create(rwlock->rwlock_name);
+	if (rwlock->rwlock_rwchan == NULL) {
+		kfree(rwlock->rwlock_name);
+		kfree(rwlock);
+		return NULL;
+	}
+
+	rwlock->rwlock_wwchan = wchan_create(rwlock->rwlock_name);
+	if (rwlock->rwlock_wwchan == NULL) {
+		wchan_destroy(rwlock->rwlock_rwchan);
+		kfree(rwlock->rwlock_name);
+		kfree(rwlock);
+		return NULL;
+	}
+
+	rwlock->rwlock_wthread = NULL;
+	rwlock->num_of_active_readers = 0;
+	rwlock->num_of_sleeping_writers = 0;
+	spinlock_init(&rwlock->rwlock_spinlock);
+
+	return rwlock;
+}
+
+void
+rwlock_destroy(struct rwlock *rwlock)
+{
+	KASSERT(rwlock != NULL);
+	KASSERT(rwlock->rwlock_wthread == NULL);
+	KASSERT(rwlock->num_of_active_readers == 0);
+
+	spinlock_cleanup(&rwlock->rwlock_spinlock);
+	wchan_destroy(rwlock->rwlock_wwchan);
+	wchan_destroy(rwlock->rwlock_rwchan);
+	kfree(rwlock->rwlock_name);
+	kfree(rwlock);
+}
+
+void
+rwlock_acquire_read(struct rwlock *rwlock)
+{
+	KASSERT(rwlock != NULL);
+	KASSERT(rwlock->num_of_active_readers >= 0);
+
+	spinlock_acquire(&rwlock->rwlock_spinlock);
+
+	while(is_writelock(rwlock) || rwlock->num_of_sleeping_writers > 0)
+	{
+		wchan_sleep(rwlock->rwlock_rwchan, &rwlock->rwlock_spinlock);
+	}
+	rwlock->num_of_active_readers++;
+
+	spinlock_release(&rwlock->rwlock_spinlock);
+}
+
+void
+rwlock_release_read(struct rwlock *rwlock)
+{
+	KASSERT(rwlock != NULL);
+	KASSERT(rwlock->rwlock_wwchan == NULL);
+	KASSERT(is_readlock(rwlock));
+
+	spinlock_acquire(&rwlock->rwlock_spinlock);
+
+	rwlock->num_of_active_readers--;
+	if(rwlock->num_of_active_readers == 0 && rwlock->num_of_sleeping_writers > 0)
+	{
+		wchan_wakeone(rwlock->rwlock_wwchan, &rwlock->rwlock_spinlock);
+	}
+
+	spinlock_release(&rwlock->rwlock_spinlock);
+}
+
+void
+rwlock_acquire_write(struct rwlock *rwlock)
+{
+	KASSERT(rwlock != NULL);
+	KASSERT(rwlock->num_of_active_readers >= 0);
+
+	spinlock_acquire(&rwlock->rwlock_spinlock);
+
+	rwlock->num_of_sleeping_writers++;
+	while(is_writelock(rwlock) || is_readlock(rwlock))
+	{
+		wchan_sleep(rwlock->rwlock_wwchan, &rwlock->rwlock_spinlock);
+	}
+	rwlock->num_of_sleeping_writers--;
+	rwlock->rwlock_wthread = curthread;
+
+	spinlock_release(&rwlock->rwlock_spinlock);
+}
+
+void
+rwlock_release_write(struct rwlock *rwlock)
+{
+	KASSERT(rwlock != NULL);
+	KASSERT(rwlock->num_of_active_readers == 0);
+	KASSERT(is_writelock(rwlock));
+
+	spinlock_acquire(&rwlock->rwlock_spinlock);
+
+	if (rwlock->num_of_sleeping_writers > 0)
+	{
+		wchan_wakeone(rwlock->rwlock_wwchan, &rwlock->rwlock_spinlock);
+	}
+	else
+	{
+		wchan_wakeall(rwlock->rwlock_rwchan, &rwlock->rwlock_spinlock);
+	}
+	rwlock->rwlock_wthread = NULL;
+
+	spinlock_release(&rwlock->rwlock_spinlock);
+}
+
+bool
+is_readlock(struct rwlock *rwlock)
+{
+	return rwlock->num_of_active_readers > 0;
+}
+
+bool
+is_writelock(struct rwlock *rwlock)
+{
+	return rwlock->rwlock_wwchan != NULL;
+}
