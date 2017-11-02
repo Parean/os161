@@ -341,6 +341,8 @@ whalemating(int nargs, char **args) {
 	 * matches to finish.
 	 */
 	int pivot = (random() % (NMATING - 2)) + 1;
+	kprintf("%d\n", pivot);
+
 	for (i = 0; i < pivot; i++) {
 		kprintf_t(".");
 		V(matcher_sem);

@@ -55,11 +55,7 @@
 /* Magic number used as a guard value on kernel thread stacks. */
 #define THREAD_STACK_MAGIC 0xbaadf00d
 
-/* Wait channel. A wchan is protected by an associated, passed-in spinlock. */
-struct wchan {
-	const char *wc_name;		/* name for this channel */
-	struct threadlist wc_threads;	/* list of waiting threads */
-};
+
 
 /* Master array of CPUs. */
 DECLARRAY(cpu, static __UNUSED inline);
