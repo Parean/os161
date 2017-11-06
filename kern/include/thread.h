@@ -65,6 +65,12 @@ typedef enum {
 	S_ZOMBIE,	/* zombie; exited but not yet deleted */
 } threadstate_t;
 
+/* Wait channel. A wchan is protected by an associated, passed-in spinlock. */
+struct wchan {
+	const char *wc_name;		/* name for this channel */
+	struct threadlist wc_threads;	/* list of waiting threads */
+};
+
 /* Thread structure. */
 struct thread {
 	/*

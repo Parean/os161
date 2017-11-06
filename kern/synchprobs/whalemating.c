@@ -39,12 +39,28 @@
 #include <thread.h>
 #include <test.h>
 #include <synch.h>
+#include <cpu.h>
+#include <current.h>
+
+static bool is_male_ready_to_mating = false;
+static bool is_female_ready_to_mating = false;
+static struct cv *male_cv;
+static struct cv *female_cv;
+static struct lock *mating_lock;
+static struct lock *matching_lock;
 
 /*
  * Called by the driver during initialization.
  */
 
-void whalemating_init() {
+void whalemating_init()
+{
+	male_cv = cv_create("male_cv");
+	female_cv = cv_create("female_cv");
+
+	mating_lock = lock_create("mating_lock");
+	matching_lock = lock_create("matching_lock");
+
 	return;
 }
 
@@ -53,39 +69,70 @@ void whalemating_init() {
  */
 
 void
-whalemating_cleanup() {
+whalemating_cleanup()
+{
+	lock_destroy(matching_lock);
+	lock_destroy(mating_lock);
+
+	cv_destroy(female_cv);
+	cv_destroy(male_cv);
+
 	return;
 }
 
 void
 male(uint32_t index)
 {
-	(void)index;
-	/*
-	 * Implement this function by calling male_start and male_end when
-	 * appropriate.
-	 */
-	return;
+	male_start(index);
+
+	lock_acquire(mating_lock);
+
+	if (!is_male_ready_to_mating) {
+		cv_wait(male_cv, mating_lock);
+	}
+
+	male_end(index);
+	is_male_ready_to_mating = false;
+
+	lock_release(mating_lock);
 }
 
 void
 female(uint32_t index)
 {
-	(void)index;
-	/*
-	 * Implement this function by calling female_start and female_end when
-	 * appropriate.
-	 */
-	return;
+	female_start(index);
+
+	lock_acquire(mating_lock);
+
+	if (!is_female_ready_to_mating) {
+		cv_wait(female_cv, mating_lock);
+	}
+
+	female_end(index);
+	is_female_ready_to_mating = false;
+
+	lock_release(mating_lock);
 }
 
 void
 matchmaker(uint32_t index)
 {
-	(void)index;
-	/*
-	 * Implement this function by calling matchmaker_start and matchmaker_end
-	 * when appropriate.
-	 */
-	return;
+	matchmaker_start(index);
+
+	lock_acquire(matching_lock);
+	lock_acquire(mating_lock);
+
+	matchmaker_end(index);
+	is_female_ready_to_mating = true;
+	is_male_ready_to_mating = true;
+
+	cv_signal(male_cv, mating_lock);
+	cv_signal(female_cv, mating_lock);
+	lock_release(mating_lock);
+
+	while(is_male_ready_to_mating || is_female_ready_to_mating) {
+		thread_yield();
+	}
+
+	lock_release(matching_lock);
 }

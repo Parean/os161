@@ -36,7 +36,7 @@
  * course, stable under rotation)
  *
  *   |0 |
- * -     --
+ * --    --
  *    01  1
  * 3  32
  * --    --
@@ -71,10 +71,24 @@
 
 /*
  * Called by the driver during initialization.
- */
+*/
+#define NUM_OF_QUADRANTS 4
+static struct cv *stop_cv;
+static uint32_t num_of_cars_in_quadrants[NUM_OF_QUADRANTS] = {0,0,0,0};
+static struct lock *quadrants_locks[NUM_OF_QUADRANTS];
+char name[32];
 
 void
-stoplight_init() {
+stoplight_init()
+{
+	stop_cv = cv_create("stop_cv");
+
+	for(int i = 0; i < NUM_OF_QUADRANTS; ++i)
+	{
+		snprintf(name, sizeof(name), "Lock of quardant %d", i);
+		quadrants_locks[i] = lock_create(name);
+	}
+
 	return;
 }
 
@@ -82,37 +96,121 @@ stoplight_init() {
  * Called by the driver during teardown.
  */
 
-void stoplight_cleanup() {
+void
+stoplight_cleanup()
+{
+	for(int i = 0; i < NUM_OF_QUADRANTS; ++i)
+	{
+		lock_destroy(quadrants_locks[i]);
+	}
+
+	cv_destroy(stop_cv);
+
 	return;
+}
+
+
+// It returns new current quadrant
+uint32_t
+one_turn(uint32_t pred_quadrant, uint32_t index)
+{
+	uint32_t current_quadrant = get_next_quadrant(pred_quadrant);
+	lock_acquire(quadrants_locks[current_quadrant]);
+	num_of_cars_in_quadrants[current_quadrant]++;
+	inQuadrant(current_quadrant, index);
+
+	clean_quadrant(pred_quadrant);
+
+	return current_quadrant;
+}
+
+
+uint32_t
+get_next_quadrant(uint32_t current_quadrant) {
+	return (current_quadrant + NUM_OF_QUADRANTS - 1) % NUM_OF_QUADRANTS;
+}
+
+void
+clean_quadrant(uint32_t quadrant)
+{
+	num_of_cars_in_quadrants[quadrant]--;
+
+	// I do not know what's best, to write without condition or with it.
+	// if ((num_of_cars_in_quadrants[0] + num_of_cars_in_quadrants[1] +
+		// num_of_cars_in_quadrants[2] + num_of_cars_in_quadrants[3]) == 2)
+		// {
+			// cv_broadcast(stop_cv, quadrants_locks[current_quadrant]);
+		// }
+	cv_signal(stop_cv, quadrants_locks[quadrant]);
+	lock_release(quadrants_locks[quadrant]);
 }
 
 void
 turnright(uint32_t direction, uint32_t index)
 {
-	(void)direction;
-	(void)index;
-	/*
-	 * Implement this function.
-	 */
+	uint32_t current_quadrant = direction;
+	lock_acquire(quadrants_locks[current_quadrant]);
+
+	// if there are already three cars at the intersection, we are waiting to avoid deadlock
+	while ((num_of_cars_in_quadrants[0] + num_of_cars_in_quadrants[1] +
+			num_of_cars_in_quadrants[2] + num_of_cars_in_quadrants[3]) == 3)
+			{
+				cv_wait(stop_cv, quadrants_locks[current_quadrant]);
+			}
+
+	num_of_cars_in_quadrants[current_quadrant]++;
+	inQuadrant(current_quadrant, index);
+
+	leaveIntersection(index);
+	clean_quadrant(current_quadrant);
+
 	return;
 }
+
 void
 gostraight(uint32_t direction, uint32_t index)
 {
-	(void)direction;
-	(void)index;
-	/*
-	 * Implement this function.
-	 */
+	uint32_t current_quadrant = direction;
+	lock_acquire(quadrants_locks[current_quadrant]);
+
+	while ((num_of_cars_in_quadrants[0] + num_of_cars_in_quadrants[1] +
+			num_of_cars_in_quadrants[2] + num_of_cars_in_quadrants[3]) == 3)
+			{
+				cv_wait(stop_cv, quadrants_locks[current_quadrant]);
+			}
+
+	num_of_cars_in_quadrants[current_quadrant]++;
+	inQuadrant(current_quadrant, index);
+
+	current_quadrant = one_turn(current_quadrant, index);
+
+	leaveIntersection(index);
+	clean_quadrant(current_quadrant);
+
 	return;
 }
 void
 turnleft(uint32_t direction, uint32_t index)
 {
-	(void)direction;
-	(void)index;
-	/*
-	 * Implement this function.
-	 */
+	uint32_t current_quadrant = direction;
+	lock_acquire(quadrants_locks[current_quadrant]);
+
+	while ((num_of_cars_in_quadrants[0] + num_of_cars_in_quadrants[1] +
+			num_of_cars_in_quadrants[2] + num_of_cars_in_quadrants[3]) == 3)
+			{
+				cv_wait(stop_cv, quadrants_locks[current_quadrant]);
+			}
+
+	num_of_cars_in_quadrants[current_quadrant]++;
+	inQuadrant(current_quadrant, index);
+
+	for (int i = 0; i < 2; ++i)
+	{
+		current_quadrant = one_turn(current_quadrant, index);
+	}
+
+	leaveIntersection(index);
+	clean_quadrant(current_quadrant);
+
 	return;
 }
