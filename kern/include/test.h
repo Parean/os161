@@ -163,6 +163,9 @@ void matchmaker(uint32_t);
  * stoplight.c.
  */
 
+uint32_t one_turn(uint32_t pred_quadrant, uint32_t index);
+uint32_t get_next_quadrant(uint32_t current_quadrant);
+void clean_quadrant(uint32_t quadrant);
 void gostraight(uint32_t, uint32_t);
 void turnleft(uint32_t, uint32_t);
 void turnright(uint32_t, uint32_t);

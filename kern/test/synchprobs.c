@@ -418,9 +418,9 @@ done:
 #define UNKNOWN_CAR -1
 #define PASSED_CAR -2
 
-#define GO_STRAIGHT 0
-#define TURN_LEFT 1
-#define TURN_RIGHT 2
+#define TURN_RIGHT 0
+#define GO_STRAIGHT 1
+#define TURN_LEFT 2
 
 static volatile int quadrant_array[NUM_QUADRANTS];
 static volatile int max_car_count;
@@ -659,7 +659,12 @@ int stoplight(int nargs, char **args) {
 		if (err) {
 			panic("sp2: thread_fork failed: (%s)\n", strerror(err));
 		}
+
+		kprintf(name);
+		kprintf(" direction %d, turn %d\n", direction, turn);
 	}
+
+	kprintf("\n\n");
 
 	for (i = 0; i < NCARS; i++) {
 		kprintf_t(".");
